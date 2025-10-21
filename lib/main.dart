@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:developer';
+// import 'package:flutter/foundation.dart';
+// import 'package:flutter/material.dart';
 
 void main() {
   runApp(const MyApp());
@@ -26,7 +31,21 @@ class Movie {
   final String id;
   final String title;
 
-  Movie(this.id, this.title);
+  Movie({required this.id, required this.title});
+
+  // Movie.fromJson(Map<String, dynamic> json)
+  //     : id = json['id'] as String,
+  //       title = json['original_title'] as String;
+
+  factory Movie.fromJson(Map<String, dynamic> json) {
+    return switch (json) {
+      {'id': String id, 'original_title': String title} => Movie(
+        id: id,
+        title: title,
+      ),
+      _ => throw const FormatException('Failed to load movie.'),
+    };
+  }
 }
 
 class MovieRatingsPage extends StatefulWidget {
@@ -39,7 +58,7 @@ class MovieRatingsPage extends StatefulWidget {
 class _MovieRatingsPageState extends State<MovieRatingsPage> {
   final List<Movie> _allMovies = List.generate(
     30,
-    (i) => Movie('m$i', 'Movie ${i + 1}'),
+    (i) => Movie(id: 'm$i', title: 'Movie ${i + 1}'),
   );
   List<Movie> _filteredMovies = [];
   String _query = '';
@@ -51,7 +70,8 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
   void initState() {
     super.initState();
     // start with the full list so the UI doesn't clear unexpectedly
-    _filteredMovies = List.from(_allMovies);
+    // _filteredMovies = List.from(_allMovies);
+    _fetchMovies();
     _loadPrefs();
   }
 
@@ -84,6 +104,32 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
     await _prefs.setInt('rating_$movieId', rating);
   }
 
+  Future<void> _fetchMovies() async {
+    final response = await http.get(
+      Uri.parse('https://jsonfakery.com/movies/paginated'),
+    );
+
+    log('Fetch movies response.statusCode: ${response.statusCode}');
+
+    if (response.statusCode == 200) {
+      // Parse the JSON response
+      final List<dynamic> data = jsonDecode(response.body)['data'];
+
+      // Map the data to Movie objects and convert to List
+      _filteredMovies = data.map<Movie>((movie) => Movie.fromJson(movie)).toList();
+
+      log('Fetch movies response.data: ${_filteredMovies.length}');
+      
+      // Update the UI
+      if (!mounted) return;
+      setState(() {
+        // Optionally, you can also update _allMovies if needed
+      });
+    } else {
+      throw Exception('Could not fetch movies');
+    }
+  }
+
   void _runFilter(String enteredKeyword) {
     // debounce so we don't rebuild/filter on every keystroke
     _debounce?.cancel();
@@ -91,10 +137,10 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
       final q = enteredKeyword.trim().toLowerCase();
       List<Movie> results;
       if (q.isEmpty) {
-        results = List.from(_allMovies);
+        results = List.from(_filteredMovies);
       } else {
         // always filter from the full source list and use lowercase comparison
-        results = _allMovies.where((m) => m.title.toLowerCase().contains(q)).toList();
+        results = _filteredMovies.where((m) => m.title.toLowerCase().contains(q)).toList();
       }
 
       if (!mounted) return;

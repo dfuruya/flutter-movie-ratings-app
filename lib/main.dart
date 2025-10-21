@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 void main() {
   runApp(const MyApp());
@@ -40,15 +41,24 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
     30,
     (i) => Movie('m$i', 'Movie ${i + 1}'),
   );
-
+  List<Movie> _filteredMovies = [];
   String _query = '';
   Map<String, int> _ratings = {}; // movieId -> rating (1..5)
   late SharedPreferences _prefs;
+  Timer? _debounce;
 
   @override
   void initState() {
     super.initState();
+    // start with the full list so the UI doesn't clear unexpectedly
+    _filteredMovies = List.from(_allMovies);
     _loadPrefs();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadPrefs() async {
@@ -61,6 +71,7 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
         if (val != null) loaded[k.substring(7)] = val;
       }
     }
+    if (!mounted) return;
     setState(() {
       _ratings = loaded;
     });
@@ -73,10 +84,24 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
     await _prefs.setInt('rating_$movieId', rating);
   }
 
-  List<Movie> get _filteredMovies {
-    if (_query.isEmpty) return _allMovies;
-    final q = _query.toLowerCase();
-    return _allMovies.where((m) => m.title.toLowerCase().contains(q)).toList();
+  void _runFilter(String enteredKeyword) {
+    // debounce so we don't rebuild/filter on every keystroke
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      final q = enteredKeyword.trim().toLowerCase();
+      List<Movie> results;
+      if (q.isEmpty) {
+        results = List.from(_allMovies);
+      } else {
+        // always filter from the full source list and use lowercase comparison
+        results = _allMovies.where((m) => m.title.toLowerCase().contains(q)).toList();
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _filteredMovies = results;
+      });
+    });
   }
 
   @override
@@ -95,7 +120,7 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
                 hintText: 'Search movies...',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (v) => setState(() => _query = v),
+              onChanged: (v) => _runFilter(v),
             ),
           ),
           Expanded(

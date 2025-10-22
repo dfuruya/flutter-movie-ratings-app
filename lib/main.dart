@@ -17,52 +17,52 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Movie Ratings',
+      title: 'Product Ratings',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: const MovieRatingsPage(),
+      home: const ProductRatingsPage(),
     );
   }
 }
 
-class Movie {
+class Product {
   final String id;
   final String title;
+  final double? price;
 
-  Movie({required this.id, required this.title});
+  Product({required this.id, required this.title, this.price});
 
-  // Movie.fromJson(Map<String, dynamic> json)
+  // Product.fromJson(Map<String, dynamic> json)
   //     : id = json['id'] as String,
-  //       title = json['original_title'] as String;
+  //       title = json['title'] as String,
+  //       price = json['price'] as double?;
 
-  factory Movie.fromJson(Map<String, dynamic> json) {
+  factory Product.fromJson(Map<String, dynamic> json) {
     return switch (json) {
-      {'id': String id, 'original_title': String title} => Movie(
-        id: id,
+      {'id': int id, 'title': String title, 'price': double price} => Product(
+        id: id.toString(),
         title: title,
+        price: price,
       ),
-      _ => throw const FormatException('Failed to load movie.'),
+      _ => throw const FormatException('Failed to load Product.'),
     };
   }
 }
 
-class MovieRatingsPage extends StatefulWidget {
-  const MovieRatingsPage({super.key});
+class ProductRatingsPage extends StatefulWidget {
+  const ProductRatingsPage({super.key});
 
   @override
-  State<MovieRatingsPage> createState() => _MovieRatingsPageState();
+  State<ProductRatingsPage> createState() => _ProductRatingsPageState();
 }
 
-class _MovieRatingsPageState extends State<MovieRatingsPage> {
-  final List<Movie> _allMovies = List.generate(
-    30,
-    (i) => Movie(id: 'm$i', title: 'Movie ${i + 1}'),
-  );
-  List<Movie> _filteredMovies = [];
+class _ProductRatingsPageState extends State<ProductRatingsPage> {
+  final List<Product> _allProducts = [];
+  List<Product> _filteredProducts = [];
   String _query = '';
-  Map<String, int> _ratings = {}; // movieId -> rating (1..5)
+  Map<String, int> _ratings = {}; // productId -> rating (1..5)
   late SharedPreferences _prefs;
   Timer? _debounce;
 
@@ -70,8 +70,8 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
   void initState() {
     super.initState();
     // start with the full list so the UI doesn't clear unexpectedly
-    // _filteredMovies = List.from(_allMovies);
-    _fetchMovies();
+    // _filteredProducts = List.from(_allProducts);
+    _fetchProducts();
     _loadPrefs();
   }
 
@@ -97,56 +97,60 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
     });
   }
 
-  Future<void> _setRating(String movieId, int rating) async {
+  Future<void> _setRating(String productId, int rating) async {
     setState(() {
-      _ratings[movieId] = rating;
+      _ratings[productId] = rating;
     });
-    await _prefs.setInt('rating_$movieId', rating);
+    await _prefs.setInt('rating_$productId', rating);
   }
 
-  Future<void> _fetchMovies() async {
-    final response = await http.get(
-      Uri.parse('https://jsonfakery.com/movies/paginated'),
-    );
+  Future<void> _fetchProducts([String? keywords]) async {
+    final url = keywords != null
+        ? 'https://dummyjson.com/products/search?q=$keywords&limit=20&select=title,price'
+        : 'https://dummyjson.com/products?limit=20&select=title,price';
 
-    log('Fetch movies response.statusCode: ${response.statusCode}');
+    if (_allProducts.isNotEmpty && keywords == null) {
+      _filteredProducts = List.from(_allProducts);
+      log('Using cached all products');
+      return;
+    }
+
+    final response = await http.get(Uri.parse(url));
+
+    log('Fetch products response.statusCode: ${response.statusCode}');
 
     if (response.statusCode == 200) {
       // Parse the JSON response
-      final List<dynamic> data = jsonDecode(response.body)['data'];
+      final List<dynamic> data = jsonDecode(response.body)['products'];
 
-      // Map the data to Movie objects and convert to List
-      _filteredMovies = data.map<Movie>((movie) => Movie.fromJson(movie)).toList();
+      // Map the data to Product objects and convert to List
+      _filteredProducts = data.map<Product>((product) => Product.fromJson(product)).toList();
 
-      log('Fetch movies response.data: ${_filteredMovies.length}');
-      
+      log('Fetch products response.data: ${_filteredProducts.length}');
+
       // Update the UI
       if (!mounted) return;
-      setState(() {
-        // Optionally, you can also update _allMovies if needed
-      });
+      // setState(() {
+      //   // Optionally, you can also update _allProducts if needed
+      // });
     } else {
-      throw Exception('Could not fetch movies');
+      throw Exception('Could not fetch products');
     }
   }
 
   void _runFilter(String enteredKeyword) {
     // debounce so we don't rebuild/filter on every keystroke
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 250), () {
+    _debounce = Timer(const Duration(milliseconds: 500), () {
       final q = enteredKeyword.trim().toLowerCase();
-      List<Movie> results;
-      if (q.isEmpty) {
-        results = List.from(_filteredMovies);
-      } else {
-        // always filter from the full source list and use lowercase comparison
-        results = _filteredMovies.where((m) => m.title.toLowerCase().contains(q)).toList();
-      }
+      log('entered keyword: ' + q);
+
+      _fetchProducts(q);
 
       if (!mounted) return;
-      setState(() {
-        _filteredMovies = results;
-      });
+      // setState(() {
+      //   _filteredProducts = results;
+      // });
     });
   }
 
@@ -154,7 +158,7 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Movie Ratings'),
+        title: const Text('Product Ratings'),
       ),
       body: Column(
         children: [
@@ -163,7 +167,7 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
             child: TextField(
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
-                hintText: 'Search movies...',
+                hintText: 'Search Products...',
                 border: OutlineInputBorder(),
               ),
               onChanged: (v) => _runFilter(v),
@@ -171,16 +175,16 @@ class _MovieRatingsPageState extends State<MovieRatingsPage> {
           ),
           Expanded(
             child: ListView.separated(
-              itemCount: _filteredMovies.length,
+              itemCount: _filteredProducts.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, index) {
-                final movie = _filteredMovies[index];
-                final rating = _ratings[movie.id] ?? 0;
+                final product = _filteredProducts[index];
+                final rating = _ratings[product.id] ?? 0;
                 return ListTile(
-                  title: Text(movie.title),
+                  title: Text(product.title),
                   trailing: StarRating(
                     rating: rating,
-                    onRatingChanged: (r) => _setRating(movie.id, r),
+                    onRatingChanged: (r) => _setRating(product.id, r),
                   ),
                 );
               },

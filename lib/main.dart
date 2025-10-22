@@ -30,9 +30,10 @@ class MyApp extends StatelessWidget {
 class Product {
   final String id;
   final String title;
-  final double? price;
+  final double price;
+  final String thumbnail;
 
-  Product({required this.id, required this.title, this.price});
+  Product({required this.id, required this.title, required this.price, required this.thumbnail});
 
   // Product.fromJson(Map<String, dynamic> json)
   //     : id = json['id'] as String,
@@ -40,14 +41,26 @@ class Product {
   //       price = json['price'] as double?;
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    return switch (json) {
-      {'id': int id, 'title': String title, 'price': double price} => Product(
-        id: id.toString(),
-        title: title,
-        price: price,
-      ),
-      _ => throw const FormatException('Failed to load Product.'),
-    };
+    return Product(
+      id: json['id'].toString(),
+      title: json['title'],
+      price: json['price'],
+      thumbnail: json['thumbnail'] ?? '',
+    );
+    // return switch (json) {
+    //   {
+    //     'id': int id, 
+    //     'title': String title, 
+    //     'price': double price,
+    //     'thumbnail': String thumbnail,
+    //   } => Product(
+    //     id: id.toString(),
+    //     title: title,
+    //     price: price,
+    //     thumbnail: thumbnail,
+    //   ),
+    //   _ => throw const FormatException('Failed to load Product.'),
+    // };
   }
 }
 
@@ -105,9 +118,7 @@ class _ProductRatingsPageState extends State<ProductRatingsPage> {
   }
 
   Future<void> _fetchProducts([String? keywords]) async {
-    final url = keywords != null
-        ? 'https://dummyjson.com/products/search?q=$keywords&limit=20&select=title,price'
-        : 'https://dummyjson.com/products?limit=20&select=title,price';
+    final url = 'https://dummyjson.com/products${keywords != null ? '/search?q=$keywords&' : '?'}limit=10&select=title,price';
 
     if (_allProducts.isNotEmpty && keywords == null) {
       _filteredProducts = List.from(_allProducts);
@@ -130,9 +141,9 @@ class _ProductRatingsPageState extends State<ProductRatingsPage> {
 
       // Update the UI
       if (!mounted) return;
-      // setState(() {
-      //   // Optionally, you can also update _allProducts if needed
-      // });
+      setState(() {
+        _filteredProducts = List.from(_filteredProducts);
+      });
     } else {
       throw Exception('Could not fetch products');
     }
@@ -181,6 +192,14 @@ class _ProductRatingsPageState extends State<ProductRatingsPage> {
                 final product = _filteredProducts[index];
                 final rating = _ratings[product.id] ?? 0;
                 return ListTile(
+                  leading: product.thumbnail.isNotEmpty
+                      ? Image.network(
+                          product.thumbnail,
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                        )
+                      : const Icon(Icons.shopping_bag),
                   title: Text(product.title),
                   trailing: StarRating(
                     rating: rating,
